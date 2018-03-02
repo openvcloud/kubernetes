@@ -40,4 +40,4 @@ class Kubernetes(TemplateBase):
             nodes=workers
         )
 
-        self.state.check('actions', 'install', 'ok')
+        self.state.set('actions', 'install', 'ok')
