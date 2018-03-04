@@ -18,11 +18,10 @@ class Setup(TemplateBase):
         super().__init__(name=name, guid=guid, data=data)
 
     def validate(self):
-        if self.data['vdc'] == '':
-            raise ValueError('vdc is required')
-
-        if self.data['workers'] == 0:
-            raise ValueError('require at least 1 worker node')
+        for key in ['vdc', 'workers', 'sshKey']:
+            value = self.data[key]
+            if not value:
+                raise ValueError('"%s" is required' % key)
 
     def _ensure_helper(self):
         name = '%s-little-helper'

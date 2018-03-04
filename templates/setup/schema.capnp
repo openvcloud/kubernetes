@@ -16,4 +16,7 @@ struct Schema {
 
     # disk size of the worker machine (per size)
     diskSize @4 :Int64;
+
+    # sshkey for deploying the helper node
+    sshKey @5 :Text;
 }
