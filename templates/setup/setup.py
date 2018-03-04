@@ -24,7 +24,7 @@ class Setup(TemplateBase):
                 raise ValueError('"%s" is required' % key)
 
     def _ensure_helper(self):
-        name = '%s-little-helper'
+        name = '%s-little-helper' % self.name
         nodes = self.api.services.find(template_uid=self.NODE_TEMPLATE, name=name)
         if len(nodes) != 0:
             return nodes[0]
