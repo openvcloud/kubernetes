@@ -9,11 +9,11 @@ struct Schema {
     vdc @1 :Text;
 
     # Workers machines
-    workers @2 :Int;
+    workers @2 :Int64;
 
     # memory size of the worker machine (per machine)
-    memory @3 :Int;
+    memory @3 :Int64;
 
     # disk size of the worker machine (per size)
-    diskSize @4 :Int;
+    diskSize @4 :Int64;
 }
