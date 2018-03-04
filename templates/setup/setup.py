@@ -40,9 +40,11 @@ class Setup(TemplateBase):
                 'sizeId': 2,
             },
         )
+
         # update data in the disk service
-        task = service.schedule_action('update_data', {'data': disk})
+        task = node.schedule_action('install')
         task.wait()
+        # check status ?
 
     def install(self):
         try:
@@ -50,7 +52,6 @@ class Setup(TemplateBase):
             return
         except StateCheckError:
             pass
-
 
         # create the helper machine (size 1 may be)
         # install zrobot on that node
