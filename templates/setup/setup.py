@@ -184,7 +184,7 @@ class Setup(TemplateBase):
         nodes = []
         tasks = []
         for index in range(self.data['workers'] + 1):
-            name = 'worker-0' % index
+            name = 'worker-%d' % index
             if index == 0:
                 name = 'master'
 
@@ -195,7 +195,8 @@ class Setup(TemplateBase):
                 data={
                     'vdc': self.data['vdc'],
                     'sshKey': self.data['sshKey'],
-                    'sizeId': 2,
+                    'sizeId': self.data['sizeId'],
+                    'dataDiskSize': self.data['dataDiskSize'],
                     'managedPrivate': True,
                 },
             )
@@ -226,4 +227,5 @@ class Setup(TemplateBase):
         self._mirror_services(zrobot)
         master, workers = self._ensure_nodes(zrobot)
 
+        # next step, make a deployment
         self.state.set('actions', 'install', 'ok')

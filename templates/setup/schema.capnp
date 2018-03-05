@@ -11,11 +11,11 @@ struct Schema {
     # Workers machines
     workers @2 :Int64;
 
-    # memory size of the worker machine (per machine)
-    memory @3 :Int64;
+    # sizeId of the worker machines
+    sizeId @3 :Int64 = 2;
 
     # disk size of the worker machine (per size)
-    diskSize @4 :Int64;
+    dataDiskSize @14 :Int64 = 10;
 
     # sshkey for deploying the helper node
     sshKey @5 :Text;
