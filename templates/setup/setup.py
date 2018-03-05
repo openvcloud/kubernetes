@@ -66,25 +66,35 @@ class Setup(TemplateBase):
         self._config = config
         return self._config
 
+
+    def _find_or_create(self, zrobot, template_uid, service_name, data):
+        found = zrobot.services.find(
+            template_uid=template_uid,
+            name=service_name
+        )
+
+        if len(found) != 0:
+            return found[0]
+
+        return zrobot.services.create(
+            template_uid=template_uid,
+            service_name=service_name,
+            data=data
+        )
+
     def _ensure_helper(self):
         name = '%s-little-helper' % self.name
-        nodes = self.api.services.find(template_uid=self.NODE_TEMPLATE, name=name)
-        if len(nodes) != 0:
-            return nodes[0]
-
-        # create the node instead
-        # create a disk service
-        node = self.api.services.create(
+        node = self._find_or_create(
+            self.api,
             template_uid=self.NODE_TEMPLATE,
             service_name=name,
             data={
                 'vdc': self.data['vdc'],
                 'sshKey': self.data['sshKey'],
                 'sizeId': 2,
-            },
+            }
         )
 
-        # update data in the disk service
         task = node.schedule_action('install')
         task.wait()
         if task.state == 'error':
@@ -94,13 +104,9 @@ class Setup(TemplateBase):
 
     def _ensure_zrobot(self, helper):
         name = '%s-little-bot' % self.name
-        bots = self.api.services.find(template_uid=self.ZROBOT_TEMPLATE, name=name)
-        if len(bots) != 0:
-            return bots[0]
 
-        # create the node instead
-        # create a disk service
-        bot = self.api.services.create(
+        bot = self._find_or_create(
+            self.api,
             template_uid=self.ZROBOT_TEMPLATE,
             service_name=name,
             data={
@@ -120,21 +126,6 @@ class Setup(TemplateBase):
             raise task.eco
 
         return bot
-
-    def _find_or_create(self, zrobot, template_uid, service_name, data):
-        found = zrobot.services.find(
-            template_uid=template_uid,
-            name=service_name
-        )
-
-        if len(found) != 0:
-            return found[0]
-
-        return zrobot.services.create(
-            template_uid=template_uid,
-            service_name=service_name,
-            data=data
-        )
 
     def _mirror_services(self, zrobot):
         config = self.config
@@ -233,7 +224,6 @@ class Setup(TemplateBase):
         zrobot = self.api.robots[bot.name]
 
         self._mirror_services(zrobot)
-        self._create_nodes(zrobot)
         master, workers = self._ensure_nodes(zrobot)
 
         self.state.set('actions', 'install', 'ok')
