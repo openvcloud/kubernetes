@@ -31,8 +31,12 @@ class Kubernetes(TemplateBase):
         except StateCheckError:
             pass
 
-        masters = [j.tools.nodemgr.get(name).prefab for name in self.data['masters']]
-        workers = [j.tools.nodemgr.get(name).prefab for name in self.data['workers']]
+        # this templates will only use the private prefab, it means that the ndoes
+        # on this service must be installed with managedPrivate = true
+        # that's exactly what the `setup` template will do.
+
+        masters = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['masters']]
+        workers = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['workers']]
 
         prefab = j.tools.prefab.local
         prefab.virtualization.kubernetes.multihost_install(
