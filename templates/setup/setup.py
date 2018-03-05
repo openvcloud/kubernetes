@@ -10,6 +10,7 @@ class Setup(TemplateBase):
     version = '0.0.1'
     template_name = "setup"
 
+    SSHKEY_TEMPLATE = 'github.com/openvcloud/0-templates/sshkey/0.0.1'
     OVC_TEMPLATE = 'github.com/openvcloud/0-templates/openvcloud/0.0.1'
     ACCOUNT_TEMPLATE = 'github.com/openvcloud/0-templates/account/0.0.1'
     VDC_TEMPLATE = 'github.com/openvcloud/0-templates/vdc/0.0.1'
@@ -120,11 +121,36 @@ class Setup(TemplateBase):
 
         return bot
 
+    def _find_or_create(self, zrobot, template_uid, service_name, data):
+        found = zrobot.services.find(
+            template_uid=template_uid,
+            name=service_name
+        )
+
+        if len(found) != 0:
+            return found[0]
+
+        return zrobot.services.create(
+            template_uid=template_uid,
+            service_name=service_name,
+            data=data
+        )
+
     def _mirror_services(self, zrobot):
         config = self.config
         ovc = j.clients.openvcloud.get(config['ovc'])
 
-        zrobot.services.create(
+        self._find_or_create(
+            zrobot,
+            template_uid=self.SSHKEY_TEMPLATE,
+            service_name=self.data['sshKey'],
+            data={
+                'passphrase': j.data.idgenerator.generatePasswd(20, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'),
+            }
+        )
+
+        self._find_or_create(
+            zrobot,
             template_uid=self.OVC_TEMPLATE,
             service_name=config['ovc'],
             data={
@@ -135,7 +161,8 @@ class Setup(TemplateBase):
             }
         )
 
-        account = zrobot.services.create(
+        account = self._find_or_create(
+            zrobot,
             template_uid=self.ACCOUNT_TEMPLATE,
             service_name=config['account'],
             data={
@@ -144,7 +171,8 @@ class Setup(TemplateBase):
             }
         )
 
-        vdc = zrobot.services.create(
+        vdc = self._find_or_create(
+            zrobot,
             template_uid=self.VDC_TEMPLATE,
             service_name=config['vdc'],
             data={
@@ -160,6 +188,38 @@ class Setup(TemplateBase):
             if task.state == 'error':
                 raise task.eco
 
+    def _ensure_nodes(self, zrobot):
+        # create master node.
+        nodes = []
+        tasks = []
+        for index in range(self.data['workers'] + 1):
+            name = 'worker-0' % index
+            if index == 0:
+                name = 'master'
+
+            node = self._find_or_create(
+                zrobot,
+                template_uid=self.NODE_TEMPLATE,
+                service_name=name,
+                data={
+                    'vdc': self.data['vdc'],
+                    'sshKey': self.data['sshKey'],
+                    'sizeId': 2,
+                    'managedPrivate': True,
+                },
+            )
+
+            task = node.schedule_action('install')
+            tasks.append(task)
+            nodes.append(node)
+
+        for task in tasks:
+            task.wait()
+            if task.state == 'error':
+                raise task.eco
+
+        return nodes[0], nodes[1:]
+
     def install(self):
         # try:
         #     self.state.check('actions', 'install', 'ok')
@@ -173,5 +233,7 @@ class Setup(TemplateBase):
         zrobot = self.api.robots[bot.name]
 
         self._mirror_services(zrobot)
+        self._create_nodes(zrobot)
+        master, workers = self._ensure_nodes(zrobot)
 
         self.state.set('actions', 'install', 'ok')
