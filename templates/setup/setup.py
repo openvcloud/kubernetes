@@ -17,6 +17,8 @@ class Setup(TemplateBase):
     NODE_TEMPLATE = 'github.com/openvcloud/0-templates/node/0.0.1'
     ZROBOT_TEMPLATE = 'github.com/openvcloud/0-templates/zrobot/0.0.1'
 
+    K8S_TEMPLATE = 'github.com/openvcloud/kubernetes/kubernetes/0.0.1'
+
     def __init__(self, name, guid=None, data=None):
         super().__init__(name=name, guid=guid, data=data)
 
@@ -212,6 +214,27 @@ class Setup(TemplateBase):
 
         return nodes[0], nodes[1:]
 
+    def _deply_k8s(self, zrobot, master, workers):
+        k8s = self._find_or_create(
+            zrobot,
+            template_uid=self.K8S_TEMPLATE,
+            service_name=self.name,
+            data={
+                'masters': [
+                    master.name,
+                ],
+                'workers': [
+                    worker.name for worker in workers
+                ]
+            }
+        )
+
+        task = k8s.schedule_action('install')
+        task.wait()
+
+        if task.state == 'error':
+            raise task.eco
+
     def install(self):
         # try:
         #     self.state.check('actions', 'install', 'ok')
@@ -227,5 +250,6 @@ class Setup(TemplateBase):
         self._mirror_services(zrobot)
         master, workers = self._ensure_nodes(zrobot)
 
+        self._deply_k8s(zrobot, master, workers)
         # next step, make a deployment
         self.state.set('actions', 'install', 'ok')
