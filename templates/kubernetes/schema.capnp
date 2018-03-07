@@ -10,4 +10,6 @@ struct Schema {
 
     # Workers machines
     workers @2 :List(Text);
+
+    connectionInfo @3 :Text;
 }

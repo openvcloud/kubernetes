@@ -96,7 +96,6 @@ class Setup(TemplateBase):
                 'sizeId': 2,
             }
         )
-
         task = node.schedule_action('install')
         task.wait()
         if task.state == 'error':
@@ -202,7 +201,6 @@ class Setup(TemplateBase):
                     'managedPrivate': True,
                 },
             )
-
             task = node.schedule_action('install')
             tasks.append(task)
             nodes.append(node)
@@ -215,6 +213,20 @@ class Setup(TemplateBase):
         return nodes[0], nodes[1:]
 
     def _deply_k8s(self, zrobot, master, workers):
+        # add portforward for k8s
+        node = self._find_or_create(
+            zrobot,
+            template_uid=self.NODE_TEMPLATE,
+            service_name=master.name,
+            data={
+                'ports': [
+                    {'443' : '443'},
+                ],
+            }
+        )
+        task = node.schedule_action('portforward_create')
+        task.wait()
+
         k8s = self._find_or_create(
             zrobot,
             template_uid=self.K8S_TEMPLATE,
@@ -234,6 +246,8 @@ class Setup(TemplateBase):
 
         if task.state == 'error':
             raise task.eco
+        self.data['connectionInfo'] = task.result
+        self.save()
 
     def install(self):
         # try:
@@ -244,12 +258,15 @@ class Setup(TemplateBase):
 
         helper = self._ensure_helper()
         bot = self._ensure_zrobot(helper)
-
         zrobot = self.api.robots[bot.name]
 
         self._mirror_services(zrobot)
         master, workers = self._ensure_nodes(zrobot)
-
         self._deply_k8s(zrobot, master, workers)
         # next step, make a deployment
         self.state.set('actions', 'install', 'ok')
+
+    def get_connection_info(self):
+        """ Return connection info for k8s cluster """
+
+        return self.data['connectionInfo']

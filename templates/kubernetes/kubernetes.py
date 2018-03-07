@@ -1,4 +1,4 @@
-
+import json
 from js9 import j
 import itertools
 from zerorobot.template.base import TemplateBase
@@ -39,9 +39,11 @@ class Kubernetes(TemplateBase):
         workers = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['workers']]
 
         prefab = j.tools.prefab.local
-        prefab.virtualization.kubernetes.multihost_install(
+        connection_info = json.dumps(list(prefab.virtualization.kubernetes.multihost_install(
             masters=masters,
             nodes=workers
-        )
-
+        )))
+        self.logger.info("connection info %s" % connection_info)
+        
         self.state.set('actions', 'install', 'ok')
+        return connection_info
