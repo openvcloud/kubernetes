@@ -128,116 +128,25 @@ class Setup(TemplateBase):
 
         return bot
 
-    def _mirror_services(self, zrobot):
-        config = self.config
-        ovc = j.clients.openvcloud.get(config['ovc'])
 
-        self._find_or_create(
-            zrobot,
-            template_uid=self.SSHKEY_TEMPLATE,
-            service_name=self.data['sshKey'],
-            data={
-                'passphrase': j.data.idgenerator.generatePasswd(20, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'),
-            }
-        )
 
-        self._find_or_create(
-            zrobot,
-            template_uid=self.OVC_TEMPLATE,
-            service_name=config['ovc'],
-            data={
-                'address': ovc.config.data['address'],
-                'port': ovc.config.data['port'],
-                'location': ovc.config.data['location'],
-                'token': ovc.config.data['jwt_'],
-            }
-        )
 
-        account = self._find_or_create(
-            zrobot,
-            template_uid=self.ACCOUNT_TEMPLATE,
-            service_name=config['account'],
-            data={
-                'openvcloud': config['ovc'],
-                'create': False,
-            }
-        )
-
-        vdc = self._find_or_create(
-            zrobot,
-            template_uid=self.VDC_TEMPLATE,
-            service_name=config['vdc'],
-            data={
-                'account': config['account'],
-                'create': False,
-            }
-        )
-
-        # make sure they are installed
-        for instance in [account, vdc]:
-            task = instance.schedule_action('install')
-            task.wait()
-            if task.state == 'error':
-                raise task.eco
-
-    def _ensure_nodes(self, zrobot):
-        # create master node.
-        nodes = []
-        tasks = []
-        for index in range(self.data['workers'] + 1):
-            name = 'worker-%d' % index
-            if index == 0:
-                name = 'master'
-
-            node = self._find_or_create(
-                zrobot,
-                template_uid=self.NODE_TEMPLATE,
-                service_name=name,
-                data={
-                    'vdc': self.data['vdc'],
-                    'sshKey': self.data['sshKey'],
-                    'sizeId': self.data['sizeId'],
-                    'dataDiskSize': self.data['dataDiskSize'],
-                    'managedPrivate': True,
-                },
-            )
-            task = node.schedule_action('install')
-            tasks.append(task)
-            nodes.append(node)
-
-        for task in tasks:
-            task.wait()
-            if task.state == 'error':
-                raise task.eco
-
-        return nodes[0], nodes[1:]
-
-    def _deply_k8s(self, zrobot, master, workers):
-        # add portforward for k8s
-        node = self._find_or_create(
-            zrobot,
-            template_uid=self.NODE_TEMPLATE,
-            service_name=master.name,
-            data={
-                'ports': [
-                    {'443' : '443'},
-                ],
-            }
-        )
-        task = node.schedule_action('portforward_create')
-        task.wait()
+    def _deploy_k8s(self, zrobot):
+        """
+        Create task on k8s robot to deploy nodes and intall k8s
+        @zrobot: k8s robot
+        """
+        data = self.data
 
         k8s = self._find_or_create(
             zrobot,
             template_uid=self.K8S_TEMPLATE,
             service_name=self.name,
             data={
-                'masters': [
-                    master.name,
-                ],
-                'workers': [
-                    worker.name for worker in workers
-                ]
+                'workers': data['workers'],
+                'vdc': data['vdc'],
+                'sizeId': data['sizeId'],
+                'dataDiskSize': data['dataDiskSize'],
             }
         )
 
@@ -260,13 +169,6 @@ class Setup(TemplateBase):
         bot = self._ensure_zrobot(helper)
         zrobot = self.api.robots[bot.name]
 
-        self._mirror_services(zrobot)
-        master, workers = self._ensure_nodes(zrobot)
-        self._deply_k8s(zrobot, master, workers)
+        self._deploy_k8s(zrobot)
         # next step, make a deployment
         self.state.set('actions', 'install', 'ok')
-
-    def get_connection_info(self):
-        """ Return connection info for k8s cluster """
-
-        return self.data['connectionInfo']

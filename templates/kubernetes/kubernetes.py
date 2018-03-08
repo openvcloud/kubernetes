@@ -11,18 +11,123 @@ class Kubernetes(TemplateBase):
     template_name = "kubernetes"
 
     NODE_TEMPLATE = 'github.com/openvcloud/0-templates/node/0.0.1'
+    SSHKEY_TEMPLATE = 'github.com/openvcloud/0-templates/sshkey/0.0.1'
+    OVC_TEMPLATE = 'github.com/openvcloud/0-templates/openvcloud/0.0.1'
+    ACCOUNT_TEMPLATE = 'github.com/openvcloud/0-templates/account/0.0.1'
+    VDC_TEMPLATE = 'github.com/openvcloud/0-templates/vdc/0.0.1'
+    NODE_TEMPLATE = 'github.com/openvcloud/0-templates/node/0.0.1'
 
     def __init__(self, name, guid=None, data=None):
         super().__init__(name=name, guid=guid, data=data)
+        self._master = None
+        self._workers = []
 
     def validate(self):
-        if len(self.data['masters']) == 0:
-            raise ValueError('master node(s) are required')
+        for key in ['vdc', 'workers']:
+            value = self.data[key]
+            if not value:
+                raise ValueError('"%s" is required' % key)
 
-        for vm in itertools.chain(self.data['masters'], self.data['workers']):
-            matches = self.api.services.find(template_uid=self.NODE_TEMPLATE, name=vm)
-            if len(matches) != 1:
-                raise RuntimeError('found %d nodes with name "%s"' % (len(matches), vm))
+    def _find_or_create(self, template_uid, service_name, data):
+        found = self.api.services.find(
+            template_uid=template_uid,
+            name=service_name
+        )
+
+        if len(found) != 0:
+            return found[0]
+
+        return self.api.services.create(
+            template_uid=template_uid,
+            service_name=service_name,
+            data=data
+        )
+
+    def _ensure_nodes(self):
+        """
+        Find or create master node and workers
+        """
+        nodes = []
+        tasks = []
+        for index in range(self.data['workers'] + 1):
+            name = 'worker-%d' % index
+            if index == 0:
+                name = 'master'                
+                # portforward for k8s on master vm
+                ports = [{'443' : '443'}]
+            else:
+                ports = []
+
+            node = self._find_or_create(
+                template_uid=self.NODE_TEMPLATE,
+                service_name=name,
+                data={
+                    'vdc': self.data['vdc'],
+                    'sshKey': self.data['sshKey'],
+                    'sizeId': self.data['sizeId'],
+                    'dataDiskSize': self.data['dataDiskSize'],
+                    'managedPrivate': True,
+                    'ports': ports,
+                },
+            )
+            task = node.schedule_action('install')
+            tasks.append(task)
+            nodes.append(node)
+
+        for task in tasks:
+            task.wait()
+            if task.state == 'error':
+                raise task.eco
+
+        return nodes[0], nodes[1:]
+
+    def _run_services(self):
+        config = self.config
+        ovc = j.clients.openvcloud.get(config['ovc'])
+
+        self._find_or_create(
+            template_uid=self.SSHKEY_TEMPLATE,
+            service_name=self.data['sshKey'],
+            data={
+                'passphrase': j.data.idgenerator.generatePasswd(20, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'),
+            }
+        )
+
+        self._find_or_create(
+            template_uid=self.OVC_TEMPLATE,
+            service_name=config['ovc'],
+            data={
+                'address': ovc.config.data['address'],
+                'port': ovc.config.data['port'],
+                'location': ovc.config.data['location'],
+                'token': ovc.config.data['jwt_'],
+            }
+        )
+
+        account = self._find_or_create(
+            template_uid=self.ACCOUNT_TEMPLATE,
+            service_name=config['account'],
+            data={
+                'openvcloud': config['ovc'],
+                'create': False,
+            }
+        )
+
+        vdc = self._find_or_create(
+            template_uid=self.VDC_TEMPLATE,
+            service_name=config['vdc'],
+            data={
+                'account': config['account'],
+                'create': False,
+            }
+        )
+
+        # make sure they are installed
+        for instance in [account, vdc]:
+            task = instance.schedule_action('install')
+            task.wait()
+            if task.state == 'error':
+                raise task.eco
 
     def install(self):
         try:
@@ -30,20 +135,28 @@ class Kubernetes(TemplateBase):
             return
         except StateCheckError:
             pass
-
-        # this templates will only use the private prefab, it means that the ndoes
+        # this templates will only use the private prefab, it means that the nodes
         # on this service must be installed with managedPrivate = true
         # that's exactly what the `setup` template will do.
+        
+        self._ensure_nodes()
+        self._run_services()
 
         masters = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['masters']]
         workers = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['workers']]
 
         prefab = j.tools.prefab.local
-        connection_info = json.dumps(list(prefab.virtualization.kubernetes.multihost_install(
+        self.data['connectionInfo'] = json.dumps(list(prefab.virtualization.kubernetes.multihost_install(
             masters=masters,
             nodes=workers
         )))
-        self.logger.info("connection info %s" % connection_info)
+        self.logger.info("connection info %s" % self.data['connectionInfo'])
         
+        self.save()
         self.state.set('actions', 'install', 'ok')
-        return connection_info
+
+    def get_connection_info(self):
+        """ Return connection info for k8s cluster """
+        return self.data['connectionInfo']        
+
+
