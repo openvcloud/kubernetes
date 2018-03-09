@@ -24,10 +24,8 @@ class Kubernetes(TemplateBase):
         self._workers = []
 
     def validate(self):
-        for key in ['vdc', 'workers']:
-            value = self.data[key]
-            if not value:
-                raise ValueError('"%s" is required' % key)
+        if not self.data['vdc']:
+            raise ValueError('"vdc" is required')
 
     def _find_or_create(self, template_uid, service_name, data):
         found = self.api.services.find(
@@ -87,7 +85,7 @@ class Kubernetes(TemplateBase):
         self.data['masters'] = [nodes[0].name]
         self.data['workers'] = [n.name for n in nodes[1:]]
         self.save()
-        
+
         return nodes[0], nodes[1:]
 
     def _install_k8s_sshkey(self):
