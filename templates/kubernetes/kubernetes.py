@@ -48,7 +48,7 @@ class Kubernetes(TemplateBase):
         """
         nodes = []
         tasks = []
-        for index in range(self.data['workers'] + 1):
+        for index in range(self.data['workerCount'] + 1):
             name = 'worker-%d' % index
             if index == 0:
                 name = 'master'                
@@ -110,7 +110,7 @@ class Kubernetes(TemplateBase):
         # this templates will only use the private prefab, it means that the nodes
         # on this service must be installed with managedPrivate = true
         # that's exactly what the `setup` template will do.
-        
+
         self._install_k8s_sshkey()
         self._ensure_nodes()
 
