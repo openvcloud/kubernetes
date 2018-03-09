@@ -16,6 +16,7 @@ class Kubernetes(TemplateBase):
     ACCOUNT_TEMPLATE = 'github.com/openvcloud/0-templates/account/0.0.1'
     VDC_TEMPLATE = 'github.com/openvcloud/0-templates/vdc/0.0.1'
     NODE_TEMPLATE = 'github.com/openvcloud/0-templates/node/0.0.1'
+    SSHKEY = 'k8s_sshkey'
 
     def __init__(self, name, guid=None, data=None):
         super().__init__(name=name, guid=guid, data=data)
@@ -55,17 +56,21 @@ class Kubernetes(TemplateBase):
                 name = 'master'                
                 # portforward for k8s on master vm
                 ports = [{'443' : '443'}]
+                size_id = self.data['masterSizeId'],
+                dataDiskSize = 20
             else:
                 ports = []
+                size_id = self.data['workerSizeId'],
+                dataDiskSize = self.data['workerDataDiskSize']
 
             node = self._find_or_create(
                 template_uid=self.NODE_TEMPLATE,
                 service_name=name,
                 data={
                     'vdc': self.data['vdc'],
-                    'sshKey': self.data['sshKey'],
-                    'sizeId': self.data['sizeId'],
-                    'dataDiskSize': self.data['dataDiskSize'],
+                    'sshKey': self.SSHKEY,
+                    'sizeId': size_id,
+                    'dataDiskSize': dataDiskSize,
                     'managedPrivate': True,
                     'ports': ports,
                 },
@@ -79,55 +84,24 @@ class Kubernetes(TemplateBase):
             if task.state == 'error':
                 raise task.eco
 
+        self.data['masters'] = [nodes[0].name]
+        self.data['workers'] = [n.name for n in nodes[1:]]
+        self.save()
+        
         return nodes[0], nodes[1:]
 
-    def _run_services(self):
-        config = self.config
-        ovc = j.clients.openvcloud.get(config['ovc'])
-
-        self._find_or_create(
+    def _install_k8s_sshkey(self):
+        ssh = self._find_or_create(
             template_uid=self.SSHKEY_TEMPLATE,
-            service_name=self.data['sshKey'],
+            service_name=self.SSHKEY,
             data={
                 'passphrase': j.data.idgenerator.generatePasswd(20, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'),
             }
         )
-
-        self._find_or_create(
-            template_uid=self.OVC_TEMPLATE,
-            service_name=config['ovc'],
-            data={
-                'address': ovc.config.data['address'],
-                'port': ovc.config.data['port'],
-                'location': ovc.config.data['location'],
-                'token': ovc.config.data['jwt_'],
-            }
-        )
-
-        account = self._find_or_create(
-            template_uid=self.ACCOUNT_TEMPLATE,
-            service_name=config['account'],
-            data={
-                'openvcloud': config['ovc'],
-                'create': False,
-            }
-        )
-
-        vdc = self._find_or_create(
-            template_uid=self.VDC_TEMPLATE,
-            service_name=config['vdc'],
-            data={
-                'account': config['account'],
-                'create': False,
-            }
-        )
-
-        # make sure they are installed
-        for instance in [account, vdc]:
-            task = instance.schedule_action('install')
-            task.wait()
-            if task.state == 'error':
-                raise task.eco
+        task = ssh.schedule_action('install')
+        task.wait()
+        if task.state == 'error':
+            raise task.eco
 
     def install(self):
         try:
@@ -139,8 +113,8 @@ class Kubernetes(TemplateBase):
         # on this service must be installed with managedPrivate = true
         # that's exactly what the `setup` template will do.
         
+        self._install_k8s_sshkey()
         self._ensure_nodes()
-        self._run_services()
 
         masters = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['masters']]
         workers = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['workers']]
