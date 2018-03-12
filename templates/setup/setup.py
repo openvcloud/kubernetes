@@ -68,7 +68,6 @@ class Setup(TemplateBase):
         self._config = config
         return self._config
 
-
     def _find_or_create(self, zrobot, template_uid, service_name, data):
         found = zrobot.services.find(
             template_uid=template_uid,
@@ -136,7 +135,7 @@ class Setup(TemplateBase):
         self._find_or_create(
             zrobot,
             template_uid=self.SSHKEY_TEMPLATE,
-            service_name=self.data['sshKey'],
+            service_name='%s-ssh' % self.name,
             data={
                 'passphrase': j.data.idgenerator.generatePasswd(20, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'),
             }
@@ -181,51 +180,16 @@ class Setup(TemplateBase):
             if task.state == 'error':
                 raise task.eco
 
-    def _ensure_nodes(self, zrobot):
-        # create master node.
-        nodes = []
-        tasks = []
-        for index in range(self.data['workers'] + 1):
-            name = 'worker-%d' % index
-            if index == 0:
-                name = 'master'
-
-            node = self._find_or_create(
-                zrobot,
-                template_uid=self.NODE_TEMPLATE,
-                service_name=name,
-                data={
-                    'vdc': self.data['vdc'],
-                    'sshKey': self.data['sshKey'],
-                    'sizeId': self.data['sizeId'],
-                    'dataDiskSize': self.data['dataDiskSize'],
-                    'managedPrivate': True,
-                },
-            )
-
-            task = node.schedule_action('install')
-            tasks.append(task)
-            nodes.append(node)
-
-        for task in tasks:
-            task.wait()
-            if task.state == 'error':
-                raise task.eco
-
-        return nodes[0], nodes[1:]
-
-    def _deply_k8s(self, zrobot, master, workers):
+    def _deply_k8s(self, zrobot):
         k8s = self._find_or_create(
             zrobot,
             template_uid=self.K8S_TEMPLATE,
             service_name=self.name,
             data={
-                'masters': [
-                    master.name,
-                ],
-                'workers': [
-                    worker.name for worker in workers
-                ]
+                'workersCount': self.data['workers'],
+                'sizeId': self.data['sizeId'],
+                'dataDiskSize': self.data['dataDiskSize'],
+                'sshKey': '%s-ssh' % self.name,
             }
         )
 
@@ -247,9 +211,6 @@ class Setup(TemplateBase):
 
         zrobot = self.api.robots[bot.name]
 
-        self._mirror_services(zrobot)
-        master, workers = self._ensure_nodes(zrobot)
-
-        self._deply_k8s(zrobot, master, workers)
+        self._deply_k8s(zrobot)
         # next step, make a deployment
         self.state.set('actions', 'install', 'ok')
