@@ -10,13 +10,20 @@ class Kubernetes(TemplateBase):
     template_name = "kubernetes"
 
     NODE_TEMPLATE = 'github.com/openvcloud/0-templates/node/0.0.1'
+    VDC_TEMPLATE = 'github.com/openvcloud/0-templates/vdc/0.0.1'
 
     def __init__(self, name, guid=None, data=None):
         super().__init__(name=name, guid=guid, data=data)
 
     def validate(self):
-        if self.data['workersCount'] < 1:
-            raise ValueError('at least a single worker is required')
+        for key in ['vdc', 'workersCount', 'sshKey']:
+            value = self.data[key]
+            if not value:
+                raise ValueError('"%s" is required' % key)
+
+        matches = self.api.services.find(template_uid=self.VDC_TEMPLATE, name=self.data['vdc'])
+        if len(matches) != 1:
+            raise RuntimeError('found %d vdcs with name "%s"' % (len(matches), self.data['vdc']))
 
     def _find_or_create(self, zrobot, template_uid, service_name, data):
         found = zrobot.services.find(

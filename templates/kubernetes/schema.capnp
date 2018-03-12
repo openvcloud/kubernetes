@@ -20,4 +20,6 @@ struct Schema {
     workersCount @6 :Int64 = 1;
 
     sshKey @7 :Text;
+
+    vdc @8 :Text;
 }

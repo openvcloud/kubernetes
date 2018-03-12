@@ -190,6 +190,7 @@ class Setup(TemplateBase):
                 'sizeId': self.data['sizeId'],
                 'dataDiskSize': self.data['dataDiskSize'],
                 'sshKey': '%s-ssh' % self.name,
+                'vdc': self.data['vdc']
             }
         )
 
