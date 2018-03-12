@@ -75,10 +75,8 @@ class Kubernetes(TemplateBase):
             if task.state == 'error':
                 raise task.eco
 
-        self.data['master'] = nodes[0].name
+        self.data['masters'] = [nodes[0].name]
         self.data['workers'] = [node.name for node in nodes[1:]]
-
-        return nodes[0], nodes[1:]
 
     def install(self):
         try:
@@ -90,10 +88,10 @@ class Kubernetes(TemplateBase):
         # this templates will only use the private prefab, it means that the ndoes
         # on this service must be installed with managedPrivate = true
         # that's exactly what the `setup` template will do.
-        master_nodes, worker_nodes = self._ensure_nodes(self.api)
+        self._ensure_nodes(self.api)
 
-        masters = [j.tools.nodemgr.get('%s_private' % name).prefab for name in master_nodes]
-        workers = [j.tools.nodemgr.get('%s_private' % name).prefab for name in worker_nodes]
+        masters = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['masters']]
+        workers = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['workers']]
 
         prefab = j.tools.prefab.local
         prefab.virtualization.kubernetes.multihost_install(
