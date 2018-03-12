@@ -1,6 +1,5 @@
 
 from js9 import j
-import itertools
 from zerorobot.template.base import TemplateBase
 from zerorobot.template.state import StateCheckError
 
@@ -16,13 +15,8 @@ class Kubernetes(TemplateBase):
         super().__init__(name=name, guid=guid, data=data)
 
     def validate(self):
-        if len(self.data['masters']) == 0:
-            raise ValueError('master node(s) are required')
-
-        for vm in itertools.chain(self.data['masters'], self.data['workers']):
-            matches = self.api.services.find(template_uid=self.NODE_TEMPLATE, name=vm)
-            if len(matches) != 1:
-                raise RuntimeError('found %d nodes with name "%s"' % (len(matches), vm))
+        if self.data['workersCount'] < 1:
+            raise ValueError('at least a single worker is required')
 
     def _find_or_create(self, zrobot, template_uid, service_name, data):
         found = zrobot.services.find(

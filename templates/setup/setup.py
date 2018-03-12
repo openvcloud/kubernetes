@@ -211,6 +211,7 @@ class Setup(TemplateBase):
 
         zrobot = self.api.robots[bot.name]
 
+        self._mirror_services(zrobot)
         self._deply_k8s(zrobot)
         # next step, make a deployment
         self.state.set('actions', 'install', 'ok')
