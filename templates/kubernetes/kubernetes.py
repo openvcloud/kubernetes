@@ -90,10 +90,10 @@ class Kubernetes(TemplateBase):
         # this templates will only use the private prefab, it means that the ndoes
         # on this service must be installed with managedPrivate = true
         # that's exactly what the `setup` template will do.
-        self._ensure_nodes(self.api)
+        master_nodes, worker_nodes = self._ensure_nodes(self.api)
 
-        masters = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['masters']]
-        workers = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['workers']]
+        masters = [j.tools.nodemgr.get('%s_private' % name).prefab for name in master_nodes]
+        workers = [j.tools.nodemgr.get('%s_private' % name).prefab for name in worker_nodes]
 
         prefab = j.tools.prefab.local
         prefab.virtualization.kubernetes.multihost_install(
