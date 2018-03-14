@@ -22,4 +22,6 @@ struct Schema {
     sshKey @7 :Text;
 
     vdc @8 :Text;
+
+    credentials @9 :List(Text);
 }

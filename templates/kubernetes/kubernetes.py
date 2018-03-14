@@ -113,5 +113,6 @@ class Kubernetes(TemplateBase):
             external_ips=[self.get_external_ip()],
         )
 
+        self.data['credentials'] = credentials
         self.state.set('actions', 'install', 'ok')
         return credentials
