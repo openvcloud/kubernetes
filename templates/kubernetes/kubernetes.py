@@ -53,7 +53,7 @@ class Kubernetes(TemplateBase):
             if index == 0:
                 name = 'master'
                 size_id = self.data['masterSizeId']
-                ports = [{'source': '443', 'destination': '443'}]
+                ports = [{'source': '6443', 'destination': '6443'}]
 
             node = self._find_or_create(
                 zrobot,
@@ -81,6 +81,16 @@ class Kubernetes(TemplateBase):
         self.data['masters'] = [nodes[0].name]
         self.data['workers'] = [node.name for node in nodes[1:]]
 
+    def get_external_ip(self):
+        matches = self.api.services.find(template_uid=self.VDC_TEMPLATE, name=self.data['vdc'])
+        if len(matches) != 1:
+            raise RuntimeError('found %d vdcs with name "%s"' % (len(matches), self.data['vdc']))
+        vdc = matches[0]
+        task = vdc.schedule_action('get_public_ip')
+        task.wait()
+
+        return task.result
+
     def install(self):
         try:
             self.state.check('actions', 'install', 'ok')
@@ -99,7 +109,8 @@ class Kubernetes(TemplateBase):
         prefab = j.tools.prefab.local
         credentials = prefab.virtualization.kubernetes.multihost_install(
             masters=masters,
-            nodes=workers
+            nodes=workers,
+            external_ips=[self.get_external_ip()],
         )
 
         self.state.set('actions', 'install', 'ok')

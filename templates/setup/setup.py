@@ -197,9 +197,10 @@ class Setup(TemplateBase):
         task = k8s.schedule_action('install')
         task.wait()
 
-        print(task.result)
         if task.state == 'error':
             raise task.eco
+
+        return task.result
 
     def install(self):
         # try:
@@ -214,6 +215,9 @@ class Setup(TemplateBase):
         zrobot = self.api.robots[bot.name]
 
         self._mirror_services(zrobot)
-        self._deply_k8s(zrobot)
+        cluster = self._deply_k8s(zrobot)
+
+        print(cluster) ## where to save it ?
+
         # next step, make a deployment
         self.state.set('actions', 'install', 'ok')
