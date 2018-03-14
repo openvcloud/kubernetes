@@ -197,6 +197,7 @@ class Setup(TemplateBase):
         task = k8s.schedule_action('install')
         task.wait()
 
+        print(task.result)
         if task.state == 'error':
             raise task.eco
 

@@ -48,10 +48,12 @@ class Kubernetes(TemplateBase):
             name = 'worker-%d' % index
             size_id = self.data['sizeId']
             disk_size = self.data['dataDiskSize']
+            ports = []
 
             if index == 0:
                 name = 'master'
                 size_id = self.data['masterSizeId']
+                ports = [{'source': '443', 'destination': '443'}]
 
             node = self._find_or_create(
                 zrobot,
@@ -63,6 +65,7 @@ class Kubernetes(TemplateBase):
                     'sizeId': size_id,
                     'dataDiskSize': disk_size,
                     'managedPrivate': True,
+                    'ports': ports,
                 },
             )
 
@@ -94,9 +97,10 @@ class Kubernetes(TemplateBase):
         workers = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['workers']]
 
         prefab = j.tools.prefab.local
-        prefab.virtualization.kubernetes.multihost_install(
+        credentials = prefab.virtualization.kubernetes.multihost_install(
             masters=masters,
             nodes=workers
         )
 
         self.state.set('actions', 'install', 'ok')
+        return credentials
