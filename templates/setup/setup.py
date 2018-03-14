@@ -2,7 +2,6 @@
 from js9 import j
 from zerorobot.template.base import TemplateBase
 from zerorobot.template.state import StateCheckError
-from JumpScale9Lib.clients.zerorobot.client import Client
 
 
 class Setup(TemplateBase):
@@ -203,11 +202,11 @@ class Setup(TemplateBase):
         return task.result
 
     def install(self):
-        # try:
-        #     self.state.check('actions', 'install', 'ok')
-        #     return
-        # except StateCheckError:
-        #     pass
+        try:
+            self.state.check('actions', 'install', 'ok')
+            return
+        except StateCheckError:
+            pass
 
         helper = self._ensure_helper()
         bot = self._ensure_zrobot(helper)
@@ -215,9 +214,7 @@ class Setup(TemplateBase):
         zrobot = self.api.robots[bot.name]
 
         self._mirror_services(zrobot)
-        cluster = self._deply_k8s(zrobot)
-
-        print(cluster) ## where to save it ?
+        self.data['credentials'] = self._deply_k8s(zrobot)
 
         # next step, make a deployment
         self.state.set('actions', 'install', 'ok')

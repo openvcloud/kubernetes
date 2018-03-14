@@ -19,4 +19,7 @@ struct Schema {
 
     # sshkey for deploying the helper node
     sshKey @5 :Text;
+
+    # cluster credentials returned
+    credentials @6 :List(Text);
 }
