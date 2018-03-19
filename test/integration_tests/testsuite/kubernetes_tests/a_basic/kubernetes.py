@@ -41,7 +41,6 @@ class kubernetes(OVC_BaseTest):
         #
         # self.log('%s ENDED' % self._testID)
 
-
     def tearDown(self):
         for accountname in self.accounts.keys():
             if self.check_if_service_exist(accountname):
