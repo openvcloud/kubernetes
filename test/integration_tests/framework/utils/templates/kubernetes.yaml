@@ -1,0 +1,8 @@
+{% include 'vdc.yaml'%}
+
+{% for kubernetes_service, kubernetes_service_parameters in kubernetes_service_parameter.items() %}
+  - github.com/openvcloud/kubernetes/setup/{{config_params('version')}}__{{kubernetes_service}}:
+{% for parameter_name, parameter_value in kubernetes_service_parameters.items() %}
+        {{parameter_name}}: {{parameter_value}}
+{% endfor %}
+{% endfor %}
