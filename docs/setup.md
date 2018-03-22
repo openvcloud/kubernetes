@@ -1,12 +1,12 @@
 # Deploying Kubernetes using the 0-templates for Kubernetes
 
 First step is to create two private Git repositories:
-- Zero-Robot data repository
-- JumpScale configuration repository
+- Zero-Robot **data** repository, here in this example named `robotdata`
+- JumpScale **configuration** repository, here in this example named `jsconfig`
 
 Make sure to initialize them.
 
-Copy the SSH address of all Git repositories in environment variables:
+Copy the ssh/http address of the Git repositories in environment variables:
 ```bash
 config_repo="ssh://git@docs.greenitglobe.com:10022/yves/jsconfig.git"
 data_repo="ssh://git@docs.greenitglobe.com:10022/yves/robotdata.git"
@@ -15,18 +15,18 @@ template_repo_kubernetes="https://github.com/openvcloud/kubernetes.git"
 template_repos_all="https://github.com/openvcloud/0-templates.git,https://github.com/openvcloud/kubernetes.git"
 ```
 
-If not already done, create a SSH key:
+If not already done, create a SSH key, here with empty passphrase:
 ```bash
 ssh-keygen -t rsa -f ~/.ssh/id_rsa -P ''
 ```
 
 If not already done, start ssh-agent and load the SSH key:
-```
+```bash
 eval `ssh-agent`
 ssh-add ~/.ssh/id_rsa
 ```
 
-Make sure that this SSH key is associated with your user account on the Git server where you created the 0-robot data and config repositories.
+Make sure that this SSH key is associated with your user account on the Git server where you created the 0-robot **data** and JumpScale **configuration** repositories.
 
 Get the internal IP address of your host into an environment variable:
 ```bash
@@ -37,7 +37,7 @@ Next you have two options:
 - [Start the Zero-Robot on your host](#host)
 - [Start the Zero-Robot in a Docker container](#docker)
 
-Once done, you will have your Zero-Robot [execute the 0-blueprints](#blueprints).
+Once done, you will use your Zero-Robot to [execute the 0-blueprints](#blueprints) that will deploy the virtual datacenter and the Kubernetes cluster.
 
 
 <a id="host"></a>
@@ -53,7 +53,7 @@ source ~/.bashrc
 ZInstall_host_js9_full
 ```
 
-Alternatively you can use the [Jumpscale installation script](https://github.com/Jumpscale/0-robot/blob/master/utils/scripts/jumpscale_install.sh) from the [Jumpscale/0-robot](https://github.com/Jumpscale/0-robot) repository, this script also creates a new SSH key and initializes your configuration manager.
+Alternatively you can use the [JumpScale installation script](https://github.com/Jumpscale/0-robot/blob/master/utils/scripts/jumpscale_install.sh) from the [Jumpscale/0-robot](https://github.com/Jumpscale/0-robot) repository, this script also creates a new SSH key and initializes your configuration manager.
 
 Clone the 0-robot repository:
 ```bash
@@ -92,29 +92,27 @@ Install Docker:
 j.tools.prefab.local.virtualization.docker.install()
 ```
 
-Create a container:
+Then create the Docker container:
 ```bash
 port_forwarding="$internal_ip_address:8000:6600"
-
-#docker run --name zrobot -e data_repo=$data_repo -e config_repo=$config_repo -e template_repo=$template_repo_all -p $port_forwarding -v /root/.ssh:/root/.ssh -e auto_push=1 -e auto_push_interval=30 jumpscale/0-robot
-docker run --name zrobot -e data_repo=$data_repo -e config_repo=$config_repo -e template_repo=$template_repo_all -p $port_forwarding -v /root/.ssh:/root/.ssh jumpscale/0-robot
+docker run --name zrobot -e data_repo=$data_repo -e config_repo=$config_repo -e template_repo=$template_repo_all -p $port_forwarding -v /root/.ssh:/root/.ssh -e auto_push=1 -e auto_push_interval=30 jumpscale/0-robot
 ```
 
-In the above approach we mount `/root/.ssh`, making your SSH keys available in the Docker container. When the container starts it will check for `id_rsa.pub`. If it finds `id_rsa.pub` 0-robot will use this key to push to your data and configuration repositories, so make sure that this key is registered on your Git server.
+In the above approach we mount `/root/.ssh`, making your SSH keys available in the Docker container. When the container starts it will check for `id_rsa.pub`. If it finds `id_rsa.pub` 0-robot will use this key to push to your data and configuration repositories, so make sure that this key is associated with your user account on the Git server.
 
-In case you don't mount `/root/.ssh`, the container will generate a new `ìd_rsa` key and exit with the value of `id_rsa.pub`. Register this public key in your Git server, so 0-robot can push changes to your data and configuration repositories. Once done so, start the container:
+In case you don't mount `/root/.ssh`, the container will generate a new `ìd_rsa` key and exit, showing the value of `id_rsa.pub`. Register this public key in your Git server, so 0-robot can push changes to your data and configuration repositories. Once done so, start the container:
 ```bash
 docker start zrobot
 ```
 
-Next, have your Zero-Robot execute the 0-blueprints, as documented [below](#blueprints).
+Next, have your Zero-Robot execute the 0-blueprints, as discussed in the next section.
 
 
 <a id="blueprints"></a>
 ## Execute the 0-blueprints
 
 
-In order to use the `zdocker` command line tool from the host you first need to clone the 0-robot repository - already done when the 0-robot is running on the host:
+In order to use the `zdocker` command line tool on the host you first need to clone the 0-robot repository - already done when the 0-robot is running on the host:
 ```bash
 cd /opt/code/github/jumpscale
 git clone git@github.com:Jumpscale/0-robot.git
