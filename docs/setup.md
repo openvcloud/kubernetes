@@ -1,8 +1,8 @@
 # Deploying Kubernetes using the 0-templates for Kubernetes
 
 First step is to create two private Git repositories:
-- One data repository
-- config repository
+- Zero-Robot data repository
+- JumpScale configuration repository
 
 Make sure to initialize them.
 
@@ -15,7 +15,7 @@ template_repo_kubernetes="https://github.com/openvcloud/kubernetes.git"
 template_repos_all="https://github.com/openvcloud/0-templates.git,https://github.com/openvcloud/kubernetes.git"
 ```
 
-If not already done so create a SSH key:
+If not already done, create a SSH key:
 ```bash
 ssh-keygen -t rsa -f ~/.ssh/id_rsa -P ''
 ```
@@ -26,7 +26,7 @@ eval `ssh-agent`
 ssh-add ~/.ssh/id_rsa
 ```
 
-Make sure that this SSH key is associated with your user account on your Git server where you created the data and config repositories.
+Make sure that this SSH key is associated with your user account on the Git server where you created the 0-robot data and config repositories.
 
 Get the internal IP address of your host into an environment variable:
 ```bash
