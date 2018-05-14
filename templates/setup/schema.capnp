@@ -8,18 +8,27 @@ struct Schema {
     # k8s vdc
     vdc @1 :Text;
 
+    # zerotier network ID. **Required**.
+    zerotierId @2 :Text;
+
+    # itsyou.online organization. **Required**.
+    organization @3 :Text;
+
+    # ZeroTier authentification token. **Required**.
+    zerotierToken @4 :Text;
+
     # Workers machines
-    workers @2 :Int64;
+    workers @5 :Int64;
 
     # sizeId of the worker machines
-    sizeId @3 :Int64 = 2;
+    sizeId @6 :Int64 = 2;
 
     # disk size of the worker machine (per size)
-    dataDiskSize @4 :Int64 = 10;
+    dataDiskSize @7 :Int64 = 10;
 
     # sshkey for deploying the helper node
-    sshKey @5 :Text;
+    sshKey @8 :Text;
 
     # cluster credentials returned
-    credentials @6 :List(Text);
+    credentials @9 :List(Text);
 }

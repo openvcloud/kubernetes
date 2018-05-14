@@ -16,56 +16,97 @@ class Kubernetes(TemplateBase):
         super().__init__(name=name, guid=guid, data=data)
 
     def validate(self):
-        for key in ['vdc', 'workersCount', 'sshKey']:
-            value = self.data[key]
-            if not value:
+        import ipdb; ipdb.set_trace()
+        for key in ['vdc', 'account', 'workersCount', 'sshKey']:
+            if not self.data[key]:
                 raise ValueError('"%s" is required' % key)
 
-        matches = self.api.services.find(template_uid=self.VDC_TEMPLATE, name=self.data['vdc'])
-        if len(matches) != 1:
-            raise RuntimeError('found %d vdcs with name "%s"' % (len(matches), self.data['vdc']))
+        # validate ovc connection entries
+        for key in self.data['ovcConnect'].keys():
+            if not self.data['ovcConnect']['key']:
+                raise ValueError('"%s" is required' % key)
+                
+    def _ensure_services(self, zrobot):
+        """ Install services """
 
-    def _find_or_create(self, zrobot, template_uid, service_name, data):
-        found = zrobot.services.find(
-            template_uid=template_uid,
-            name=service_name
+        data = self.data
+
+        # define names of services
+        service_names = {
+            'sshkey': "{}-{}".format(self.name, data['sshKey']),
+            'ovc': "{}-{}".format(self.name, data['ovcConnect']['name']),
+            'account': "{}-{}".format(self.name, data['account']),
+            'vdc': "{}-{}".format(self.name, data['vdc']),
+        }
+
+        sshkey = zrobot.services.find_or_create(
+            template_uid=self.SSHKEY_TEMPLATE,
+            service_name=service_names['sshkey'],
+            data={
+                'name': data['sshkey'],
+                'passphrase': j.data.idgenerator.generatePasswd(20, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'),
+            }
         )
 
-        if len(found) != 0:
-            return found[0]
-
-        return zrobot.services.create(
-            template_uid=template_uid,
-            service_name=service_name,
-            data=data
+        ovc = zrobot.services.find_or_create(
+            template_uid=self.OVC_TEMPLATE,
+            service_name=service_names['ovc'],
+            data={
+                'name': data['ovcConnect']['name'],
+                'address': data['ovcConnect']['address'],
+                'port': data['ovcConnect']['port'],
+                'location': data['ovcConnect']['location'],
+                'token': data['ovcConnect']['token'],
+            }
         )
+        account = zrobot.services.find_or_create(
+            template_uid=self.ACCOUNT_TEMPLATE,
+            service_name=service_names['account'],
+            data={
+                'name': data['account'],
+                'openvcloud': service_names['ovc'],
+                'create': False,
+            }
+        )
+
+        vdc = zrobot.services.find_or_create(
+            template_uid=self.VDC_TEMPLATE,
+            service_name=service_names['vdc'],
+            data={
+                'name': data['vdc'],
+                'account': service_names['account'],
+                'create': False,
+            }
+        )
+
+        # install services
+        for service in [ovc, account, vdc, sshkey]:
+            service.schedule_action('install').wait(die=True)
 
     def _ensure_nodes(self, zrobot):
         # create master node.
         nodes = []
         tasks = []
         for index in range(self.data['workersCount'] + 1):
-            name = 'worker-%d' % index
-            size_id = self.data['sizeId']
+            name = '%s_worker-%d' % (self.name, index)
+            size_id = self.data['workerSizeId']
             disk_size = self.data['dataDiskSize']
-            ports = []
 
             if index == 0:
-                name = 'master'
+                name = '{}_master'.format(self.name)
                 size_id = self.data['masterSizeId']
-                ports = [{'source': '6443', 'destination': '6443'}]
+                #ports = [{'source': '6443', 'destination': '6443'}]
 
-            node = self._find_or_create(
-                zrobot,
+            node = zrobot.find_or_create(
                 template_uid=self.NODE_TEMPLATE,
                 service_name=name,
                 data={
+                    'name': name,
                     'vdc': self.data['vdc'],
                     'sshKey': self.data['sshKey'],
                     'sizeId': size_id,
                     'dataDiskSize': disk_size,
                     'managedPrivate': True,
-                    'ports': ports,
                 },
             )
 
@@ -74,9 +115,7 @@ class Kubernetes(TemplateBase):
             nodes.append(node)
 
         for task in tasks:
-            task.wait()
-            if task.state == 'error':
-                raise task.eco
+            task.wait(die=True)
 
         self.data['masters'] = [nodes[0].name]
         self.data['workers'] = [node.name for node in nodes[1:]]
@@ -101,6 +140,9 @@ class Kubernetes(TemplateBase):
         # this templates will only use the private prefab, it means that the ndoes
         # on this service must be installed with managedPrivate = true
         # that's exactly what the `setup` template will do.
+
+        import ipdb; ipdb.set_trace()        
+        self._ensure_services(self.api)
         self._ensure_nodes(self.api)
 
         masters = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['masters']]

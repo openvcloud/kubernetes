@@ -9,6 +9,9 @@ class Setup(TemplateBase):
     version = '0.0.1'
     template_name = "setup"
 
+    ZERO_TEMPLATES = 'https://github.com/openvcloud/0-templates.git'
+    K8S_TEMPLATES = 'https://github.com/openvcloud/kubernetes.git'
+
     SSHKEY_TEMPLATE = 'github.com/openvcloud/0-templates/sshkey/0.0.1'
     OVC_TEMPLATE = 'github.com/openvcloud/0-templates/openvcloud/0.0.1'
     ACCOUNT_TEMPLATE = 'github.com/openvcloud/0-templates/account/0.0.1'
@@ -16,6 +19,7 @@ class Setup(TemplateBase):
     NODE_TEMPLATE = 'github.com/openvcloud/0-templates/node/0.0.1'
     ZROBOT_TEMPLATE = 'github.com/openvcloud/0-templates/zrobot/0.0.1'
 
+    ZOS_NODE_TEMPLATE = 'github.com/openvcloud/kubernetes/zos_node/0.0.1'
     K8S_TEMPLATE = 'github.com/openvcloud/kubernetes/kubernetes/0.0.1'
 
     def __init__(self, name, guid=None, data=None):
@@ -24,9 +28,8 @@ class Setup(TemplateBase):
         self._config = None
 
     def validate(self):
-        for key in ['vdc', 'workers', 'sshKey']:
-            value = self.data[key]
-            if not value:
+        for key in ['vdc', 'workers', 'sshKey', 'zerotierToken', 'zerotierId']:
+            if not self.data[key]:
                 raise ValueError('"%s" is required' % key)
 
     @property
@@ -37,169 +40,98 @@ class Setup(TemplateBase):
         if self._config is not None:
             return self._config
 
-        config = {
-            'vdc': self.data['vdc'],
-        }
+        config = {}
         # traverse the tree up words so we have all info we need to return, connection and
         # account
-        matches = self.api.services.find(template_uid=self.VDC_TEMPLATE, name=config['vdc'])
-        if len(matches) != 1:
-            raise RuntimeError('found %d vdcs with name "%s"' % (len(matches), config['vdc']))
+        vdc_proxy = self.api.services.get(template_uid=self.VDC_TEMPLATE, name=self.data['vdc'])
+        vdc_info = vdc_proxy.schedule_action('get_info').wait(die=True).result
+        config['vdc'] = vdc_info['name']
 
-        vdc = matches[0]
-        self._vdc = vdc
-        task = vdc.schedule_action('get_account')
-        task.wait()
+        acc_proxy = self.api.services.get(template_uid=self.ACCOUNT_TEMPLATE, name=vdc_info['account'])
+        acc_info = acc_proxy.schedule_action('get_info').wait(die=True).result
+        config['account'] = acc_info['name']
 
-        config['account'] = task.result
-
-        matches = self.api.services.find(template_uid=self.ACCOUNT_TEMPLATE, name=config['account'])
-        if len(matches) != 1:
-            raise ValueError('found %s accounts with name "%s"' % (len(matches), config['account']))
-
-        account = matches[0]
-        # get connection
-        task = account.schedule_action('get_openvcloud')
-        task.wait()
-
-        config['ovc'] = task.result
+        ovc_proxy = self.api.services.get(template_uid=self.OVC_TEMPLATE, name=acc_info['openvcloud'])
+        ovc_info = ovc_proxy.schedule_action('get_info').wait(die=True).result
+        config['ovc'] = ovc_info['name']
 
         self._config = config
         return self._config
 
-    def _find_or_create(self, zrobot, template_uid, service_name, data):
-        found = zrobot.services.find(
-            template_uid=template_uid,
-            name=service_name
-        )
-
-        if len(found) != 0:
-            return found[0]
-
-        return zrobot.services.create(
-            template_uid=template_uid,
-            service_name=service_name,
-            data=data
-        )
-
     def _ensure_helper(self):
-        name = '%s-little-helper' % self.name
-        node = self._find_or_create(
-            self.api,
-            template_uid=self.NODE_TEMPLATE,
+        """ create helper zos machine, return zrobot object """
+
+        # get ZeroTier client
+        zerotier_instance = 'kubernetes_zerotier'
+        j.clients.zerotier.get(zerotier_instance, {'token_': self.data['zerotierToken']})
+
+        #name = '%s-helper' % self.name
+        name = 'zosnodeDev'
+        node = self.api.services.find_or_create(
+            template_uid=self.ZOS_NODE_TEMPLATE,
             service_name=name,
             data={
+                'name': name,
                 'vdc': self.data['vdc'],
-                'sshKey': self.data['sshKey'],
-                'sizeId': 2,
+                'zerotierId': self.data['zerotierId'],
+                'organization': self.data['organization'],
+                'zerotierClient': zerotier_instance,
             }
         )
 
-        task = node.schedule_action('install')
-        task.wait()
-        if task.state == 'error':
-            raise task.eco
+        node.schedule_action('install').wait(die=True)
+        node_info = node.schedule_action('get_info').wait(die=True).result
 
-        return node
+        # error if itsyou.online client instance is not configured
+        iyo_client = j.clients.itsyouonline.get(instance='main', create=False)
+        memberof_scope = "user:memberof:{}".format(self.data['organization'])
+        jwt = iyo_client.jwt_get(scope=memberof_scope, refreshable=True)
 
-    def _ensure_zrobot(self, helper):
-        name = '%s-little-bot' % self.name
+        # connect to robot on helper machine
+        bot_name = '%s-bot' % self.name
+        def_robot_port = '6600'
+        url = '{}:{}'.format(node_info['zerotierPublicIP'], def_robot_port)
+        zrobot_data = {'jwt_': jwt, 'url': url}
+        j.clients.zrobot.get(instance=bot_name, data=zrobot_data)
+        bot = j.clients.zrobot.robots[bot_name]
 
-        bot = self._find_or_create(
-            self.api,
-            template_uid=self.ZROBOT_TEMPLATE,
-            service_name=name,
-            data={
-                'node': helper.name,
-                'port': 6600,
-                'templates': [
-                    'https://github.com/openvcloud/0-templates.git',
-                    'https://github.com/openvcloud/kubernetes.git',
-                ],
-            },
-        )
+        # load templates to the k8s robot
+        bot.templates.add_repo(self.ZERO_TEMPLATES)
 
-        # update data in the disk service
-        task = bot.schedule_action('install')
-        task.wait()
-        if task.state == 'error':
-            raise task.eco
+        # TESTING: branch = update
+        bot.templates.add_repo(self.K8S_TEMPLATES, branch='update')
 
         return bot
 
-    def _mirror_services(self, zrobot):
-        config = self.config
-        ovc = j.clients.openvcloud.get(config['ovc'])
+    def _deploy_k8s(self, zrobot):
+        """ Schedule deployment of kubernetes cluster
 
-        self._find_or_create(
-            zrobot,
-            template_uid=self.SSHKEY_TEMPLATE,
-            service_name='%s-ssh' % self.name,
-            data={
-                'passphrase': j.data.idgenerator.generatePasswd(20, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'),
-            }
-        )
+            :param zrobot: 0-robot instance
+            return value: credentials of kubernetes cluster.
+        """
 
-        self._find_or_create(
-            zrobot,
-            template_uid=self.OVC_TEMPLATE,
-            service_name=config['ovc'],
-            data={
-                'address': ovc.config.data['address'],
-                'port': ovc.config.data['port'],
-                'location': ovc.config.data['location'],
-                'token': ovc.config.data['jwt_'],
-            }
-        )
-
-        account = self._find_or_create(
-            zrobot,
-            template_uid=self.ACCOUNT_TEMPLATE,
-            service_name=config['account'],
-            data={
-                'openvcloud': config['ovc'],
-                'create': False,
-            }
-        )
-
-        vdc = self._find_or_create(
-            zrobot,
-            template_uid=self.VDC_TEMPLATE,
-            service_name=config['vdc'],
-            data={
-                'account': config['account'],
-                'create': False,
-            }
-        )
-
-        # make sure they are installed
-        for instance in [account, vdc]:
-            task = instance.schedule_action('install')
-            task.wait()
-            if task.state == 'error':
-                raise task.eco
-
-    def _deply_k8s(self, zrobot):
-        k8s = self._find_or_create(
-            zrobot,
+        ovc_client = j.clients.openvcloud.get(self.config['ovc'], create=False)
+        k8s = zrobot.services.find_or_create(
             template_uid=self.K8S_TEMPLATE,
             service_name=self.name,
             data={
                 'workersCount': self.data['workers'],
                 'sizeId': self.data['sizeId'],
                 'dataDiskSize': self.data['dataDiskSize'],
-                'sshKey': '%s-ssh' % self.name,
-                'vdc': self.data['vdc']
+                'vdc': self.config['vdc'],
+                'account': self.config['account'],
+                'ovcConnect': {
+                    'location': ovc_client.config.data['location'],
+                    'address': ovc_client.config.data['address'],
+                    'port': ovc_client.config.data['port'],
+                    'token': ovc_client.config.data['jwt_']
+                }
             }
         )
 
-        task = k8s.schedule_action('install')
-        task.wait()
+        credentials = k8s.schedule_action('install').wait(die=True).result
 
-        if task.state == 'error':
-            raise task.eco
-
-        return task.result
+        return credentials
 
     def install(self):
         try:
@@ -208,13 +140,13 @@ class Setup(TemplateBase):
         except StateCheckError:
             pass
 
-        helper = self._ensure_helper()
-        bot = self._ensure_zrobot(helper)
+        zrobot = self._ensure_helper()
+        #bot = self._ensure_zrobot(helper)
+        #zrobot = self.api.robots[bot.name]
 
-        zrobot = self.api.robots[bot.name]
-
-        self._mirror_services(zrobot)
-        self.data['credentials'] = self._deply_k8s(zrobot)
+        import ipdb; ipdb.set_trace()
+        #self._mirror_services(zrobot)
+        self.data['credentials'] = self._deploy_k8s(zrobot)
 
         # next step, make a deployment
         self.state.set('actions', 'install', 'ok')

@@ -2,26 +2,55 @@
 @0xe98c0ff4e7232c00;
 
 struct Schema {
-   	# Description of the cloudspace.
-	description @0 :Text;
+    # VDC name (required)
+    vdc @0 :Text;
+
+    # Account name (required)
+    account @1 :Text
+
+    # OpnevCloud connection data
+    ovcConnect @2: Connection;
+
+   	# Claster description (optional)
+	description @3 :Text;
+
+    # Size ID of a master machine
+    masterSizeId @4 :Int64 = 2;
+
+    # Size ID of a worker machine
+    workerSizeId @5 :Int64 = 2;
+
+    dataDiskSize @6 :Int64 = 10;
+
+    # Number of worker machines
+    workersCount @7 :Int64 = 1;
+
+    # sshkey name
+    sshKey @8 :Text = "k8s_id";
 
     # Masters machines (autofilled)
-    masters @1 :List(Text);
+    masters @9 :List(Text);
 
     # Workers machines (autofilled)
-    workers @2 :List(Text);
+    workers @10 :List(Text);
 
-    masterSizeId @3 :Int64 = 2;
+    # Kubernetes credentials (autofilled)
+    credentials @11 :List(Text);
 
-    sizeId @4 :Int64 = 2;
+    struct Connection {
+        # OVC address (URL) (required)
+        address @0 :Text;
 
-    dataDiskSize @5 :Int64 = 10;
+        # IYO Token (required)
+        token @1 :Text;
 
-    workersCount @6 :Int64 = 1;
+        # Location (required)
+        location @2 :Text;
 
-    sshKey @7 :Text;
+        # OpenvCloud port
+        port @3 :UInt16 = 443;
 
-    vdc @8 :Text;
-
-    credentials @9 :List(Text);
+        # instance name
+        name @4 :Text = "k8sConnection"
+    }
 }
