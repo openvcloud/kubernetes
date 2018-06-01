@@ -51,6 +51,6 @@ struct Schema {
         port @3 :UInt16 = 443;
 
         # instance name
-        name @4 :Text = "k8sConnection"
+        name @4 :Text = "k8sConnection";
     }
 }

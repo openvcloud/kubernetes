@@ -117,22 +117,20 @@ class ZosNode(TemplateBase):
             return
         except StateCheckError:
             pass
+
         # get new vm
-        self._machine, zerotire_node_info = self.space.create_and_connect_zos_machine(
+        vm = self.space.create_and_connect_zos_machine(
             name=self.data['name'],
             zerotier_id=self.data['zerotierId'],
             organization=self.data['organization'],
             zerotier_client=self.data['zerotierClient'],
             sizeId=self.data['sizeId'],
+            branch=self.data['branch']
         )
+        self._machine = vm['openvcloud']
 
-        # fetch node info after connection to ZiroTier network
-        ipAssignments = zerotire_node_info['config']['ipAssignments']
-        
-        # ensure unique ipAssignment
-        if len(ipAssignments) != 1:
-            raise RuntimeError('Found %s ipAssignments, expected exactly one' % len(ipAssignments))
-        self.data['zerotierPublicIP'] = 'http://{}'.format(ipAssignments[0])
+        # fetch vm IP in ZeroTier network
+        self.data['zerotierPublicIP'] = 'http://{}'.format(vm['zerotier'].private_ip)
 
         # Get data from the vm
         self.data['ipPrivate'] = self.machine.ipaddr_priv

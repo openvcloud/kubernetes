@@ -107,6 +107,7 @@ class Kubernetes(TemplateBase):
                     'sizeId': size_id,
                     'dataDiskSize': disk_size,
                     'managedPrivate': True,
+                    'branch': 'development' # branch of Zero-os
                 },
             )
 
@@ -137,11 +138,11 @@ class Kubernetes(TemplateBase):
         except StateCheckError:
             pass
 
-        # this templates will only use the private prefab, it means that the ndoes
+        # this templates will only use the private prefab, it means that the nodes
         # on this service must be installed with managedPrivate = true
         # that's exactly what the `setup` template will do.
 
-        import ipdb; ipdb.set_trace()        
+        #import ipdb; ipdb.set_trace()
         self._ensure_services(self.api)
         self._ensure_nodes(self.api)
 

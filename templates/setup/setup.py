@@ -65,8 +65,8 @@ class Setup(TemplateBase):
         zerotier_instance = 'kubernetes_zerotier'
         j.clients.zerotier.get(zerotier_instance, {'token_': self.data['zerotierToken']})
 
-        #name = '%s-helper' % self.name
-        name = 'zosnodeDev'
+        name = '%s-helper' % self.name
+        #name = 'zosnodeDev'
         node = self.api.services.find_or_create(
             template_uid=self.ZOS_NODE_TEMPLATE,
             service_name=name,
@@ -100,6 +100,7 @@ class Setup(TemplateBase):
 
         # TESTING: branch = update
         bot.templates.add_repo(self.K8S_TEMPLATES, branch='update')
+        import ipdb; ipdb.set_trace()
 
         return bot
 
@@ -140,6 +141,7 @@ class Setup(TemplateBase):
         except StateCheckError:
             pass
 
+        import ipdb; ipdb.set_trace()
         zrobot = self._ensure_helper()
         #bot = self._ensure_zrobot(helper)
         #zrobot = self.api.robots[bot.name]

@@ -21,28 +21,30 @@ struct Schema {
 	# OS Image
 	osImage @6 :Text = "IPXE Boot";
 
+	# Branch of Zero-os
+	branch @7 :Text = "master";
+
 	# Memory available for the vm in GB
-	bootDiskSize @7 :Int64 = 10;
+	bootDiskSize @8 :Int64 = 10;
 
 	# Type of VM: defines the number of CPU and memory available for the vm
-	sizeId @8 :Int64 = 2;
+	sizeId @9 :Int64 = 2;
 
 	# Number of CPUs. **Filled in automatically, don't specify it in the blueprint**.
-	vCpus @9 :Int64;
+	vCpus @10 :Int64;
 
 	# Memory in MB. **Filled in automatically, don't specify it in the blueprint**.
-	memSize @10 :Int64;
-
+	memSize @11 :Int64;
 
 	# ID of the VM. **Filled in automatically, don't specify it in the blueprint**
-	machineId @11 :Int64 = 0;
+	machineId @12 :Int64 = 0;
 
 	# Public ip of the VM. **Filled in automatically, don't specify it in the blueprint**
-	ipPublic @12 :Text;
+	ipPublic @13 :Text;
 
 	# Private ip of the VM. **Filled in automatically, don't specify it in the blueprint**
-	ipPrivate @13 :Text;
+	ipPrivate @14 :Text;
 
 	# ZeroTier node ID *Filled in automatically, don't specify it in the blueprint**
-	zerotierPublicIP @14 :Text;
+	zerotierPublicIP @15 :Text;
 }
