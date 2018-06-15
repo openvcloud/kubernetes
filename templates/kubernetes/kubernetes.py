@@ -9,87 +9,131 @@ class Kubernetes(TemplateBase):
     version = '0.0.1'
     template_name = "kubernetes"
 
+    OVC_TEMPLATE = 'github.com/openvcloud/0-templates/openvcloud/0.0.1'
+    ACCOUNT_TEMPLATE = 'github.com/openvcloud/0-templates/account/0.0.1'
+    VDC_TEMPLATE = 'github.com/openvcloud/0-templates/vdc/0.0.1'
     NODE_TEMPLATE = 'github.com/openvcloud/0-templates/node/0.0.1'
     VDC_TEMPLATE = 'github.com/openvcloud/0-templates/vdc/0.0.1'
+    SSHKEY_TEMPLATE = 'github.com/openvcloud/0-templates/sshkey/0.0.1'
 
     def __init__(self, name, guid=None, data=None):
         super().__init__(name=name, guid=guid, data=data)
 
     def validate(self):
-        for key in ['vdc', 'workersCount', 'sshKey']:
-            value = self.data[key]
-            if not value:
+        for key in ['vdc', 'account', 'workersCount', 'sshKey']:
+            if not self.data[key]:
                 raise ValueError('"%s" is required' % key)
 
-        matches = self.api.services.find(template_uid=self.VDC_TEMPLATE, name=self.data['vdc'])
-        if len(matches) != 1:
-            raise RuntimeError('found %d vdcs with name "%s"' % (len(matches), self.data['vdc']))
+        # validate ovc connection entries
+        for key in self.data['connection'].keys():
+            if not self.data['connection'][key]:
+                raise ValueError('"%s" is required' % key)
 
-    def _find_or_create(self, zrobot, template_uid, service_name, data):
-        found = zrobot.services.find(
-            template_uid=template_uid,
-            name=service_name
+    def get_info(self):
+        """ Fetch data of kubernetes cluster """
+        self.state.check('actions', 'install', 'ok')
+        return {
+            'credentials': self.data['credentials'],
+        }
+
+
+    @property
+    def _services(self):
+        # define names of services
+        return {
+            'sshKey': "{}-{}".format(self.name, self.data['sshKey']['name']),
+            'ovc': "{}-{}".format(self.name, self.data['connection']['name']),
+            'account': "{}-{}".format(self.name, self.data['account']),
+            'vdc': "{}-{}".format(self.name, self.data['vdc']),
+        }
+
+    def _ensure_services(self, zrobot):
+        """ Install services """
+
+        data = self.data
+        sshkey = zrobot.services.find_or_create(
+            template_uid=self.SSHKEY_TEMPLATE,
+            service_name=self._services['sshKey'],
+            data=data['sshKey']
         )
 
-        if len(found) != 0:
-            return found[0]
-
-        return zrobot.services.create(
-            template_uid=template_uid,
-            service_name=service_name,
-            data=data
+        ovc = zrobot.services.find_or_create(
+            template_uid=self.OVC_TEMPLATE,
+            service_name=self._services['ovc'],
+            data={
+                'name': data['connection']['name'],
+                'address': data['connection']['address'],
+                'port': data['connection']['port'],
+                'location': data['connection']['location'],
+                'token': data['connection']['token'],
+            }
         )
+
+        account = zrobot.services.find_or_create(
+            template_uid=self.ACCOUNT_TEMPLATE,
+            service_name=self._services['account'],
+            data={
+                'name': data['account'],
+                'openvcloud': self._services['ovc'],
+                'create': False,
+            }
+        )
+
+        vdc = zrobot.services.find_or_create(
+            template_uid=self.VDC_TEMPLATE,
+            service_name=self._services['vdc'],
+            data={
+                'name': data['vdc'],
+                'account': self._services['account'],
+                'create': False,
+            }
+        )
+
+        # install services
+        for service in [ovc, account, vdc, sshkey]:
+            service.schedule_action('install').wait(die=True)
+
 
     def _ensure_nodes(self, zrobot):
-        # create master node.
+        # create master node and worker nodes
         nodes = []
         tasks = []
         for index in range(self.data['workersCount'] + 1):
-            name = 'worker-%d' % index
-            size_id = self.data['sizeId']
+            name = '%s-worker-%d' % (self.name, index)
+            size_id = self.data['workerSizeId']
             disk_size = self.data['dataDiskSize']
-            ports = []
 
             if index == 0:
-                name = 'master'
+                name = '{}-master'.format(self.name)
                 size_id = self.data['masterSizeId']
-                ports = [{'source': '6443', 'destination': '6443'}]
 
-            node = self._find_or_create(
-                zrobot,
+            node = zrobot.services.find_or_create(
                 template_uid=self.NODE_TEMPLATE,
                 service_name=name,
                 data={
-                    'vdc': self.data['vdc'],
-                    'sshKey': self.data['sshKey'],
+                    'name': name,
+                    'vdc': self._services['vdc'],
+                    'sshKey': self._services['sshKey'],
                     'sizeId': size_id,
                     'dataDiskSize': disk_size,
                     'managedPrivate': True,
-                    'ports': ports,
                 },
             )
 
             task = node.schedule_action('install')
             tasks.append(task)
-            nodes.append(node)
+            nodes.append(name)
 
         for task in tasks:
-            task.wait()
-            if task.state == 'error':
-                raise task.eco
+            task.wait(die=True)
 
-        self.data['masters'] = [nodes[0].name]
-        self.data['workers'] = [node.name for node in nodes[1:]]
+        self.data['masters'] = [nodes[0]]
+        self.data['workers'] = nodes[1:]
 
-    def get_external_ip(self):
-        matches = self.api.services.find(template_uid=self.VDC_TEMPLATE, name=self.data['vdc'])
-        if len(matches) != 1:
-            raise RuntimeError('found %d vdcs with name "%s"' % (len(matches), self.data['vdc']))
-        vdc = matches[0]
-        task = vdc.schedule_action('get_public_ip')
-        task.wait()
-
-        return task.result
+    @property
+    def external_ip(self):
+        vdc = self.api.services.get(template_uid=self.VDC_TEMPLATE, name=self._services['vdc'])
+        return vdc.schedule_action('get_info').wait(die=True).result['public_ip']
 
     def install(self):
         try:
@@ -98,21 +142,47 @@ class Kubernetes(TemplateBase):
         except StateCheckError:
             pass
 
-        # this templates will only use the private prefab, it means that the ndoes
+        # this templates will only use the private prefab, it means that the nodes
         # on this service must be installed with managedPrivate = true
         # that's exactly what the `setup` template will do.
+        self._ensure_services(self.api)
         self._ensure_nodes(self.api)
 
         masters = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['masters']]
         workers = [j.tools.nodemgr.get('%s_private' % name).prefab for name in self.data['workers']]
 
         prefab = j.tools.prefab.local
-        credentials = prefab.virtualization.kubernetes.multihost_install(
+        
+        self.data['credentials'] = prefab.virtualization.kubernetes.multihost_install(
             masters=masters,
             nodes=workers,
-            external_ips=[self.get_external_ip()],
+            external_ips=[self.external_ip],
         )
+        
+        if not self.data['credentials']:
+            raise RuntimeError('Something went wrong: kubernetes cluster credentials were not returned. Check if the cluster was not already installed previously')
 
-        self.data['credentials'] = credentials
         self.state.set('actions', 'install', 'ok')
-        return credentials
+
+    def uninstall(self):
+        """ Uninstall kubernetes cluster """
+        # delete nodes
+        for nodes in ['masters', 'workers']:
+            while self.data[nodes]:
+                node = self.data[nodes].pop()
+                service = self.api.services.get(name=node)
+                service.schedule_action('uninstall').wait(die=True)
+                service.delete()
+
+        # uninstall created services
+        for service_name in self._services:
+            service = self.api.services.find(name=service_name)
+            if service:
+                service[0].delete()
+        
+        self.data['credentials'] = None
+        self.state.delete('actions', 'install')
+
+
+
+
