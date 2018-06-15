@@ -19,8 +19,9 @@ class ZosNode(TemplateBase):
         self._config = None
         self._ovc = None
         self._space = None
-        self._machine = None
-        self._zerotier_node_id = None
+        self._machine_ = None
+        self._zerotier_node_ = None
+        self._zerotier_network_ = None
 
     def validate(self):
         """
@@ -38,7 +39,7 @@ class ZosNode(TemplateBase):
             'id': self.data['machineId'],
             'vdc': self.data['vdc'],
             'zerotierId': self.data['zerotierId'],
-            'zerotierPublicIP': self.data['zerotierPublicIP'],
+            'zerotierPrivateIP': self.data['zerotierPrivateIP'],
             'organization': self.data['organization']
         }
 
@@ -99,13 +100,38 @@ class ZosNode(TemplateBase):
         return self._space
 
     @property
-    def machine(self):
+    def _machine(self):
         """ Return VM object """
-        if not self._machine:
+        if not self._machine_:
             if self.data['name'] in self.space.machines:
-                self._machine = self.space.machine_get(name=self.data['name'])
+                self._machine_ = self.space.machine_get(name=self.data['name'])
 
-        return self._machine
+        return self._machine_
+
+
+    @property
+    def _zerotier_network(self):
+        if self._zerotier_network_:
+            return self._zerotier_network_
+        client = j.clients.zerotier.get(self.data['zerotierClient'], create=False)
+        self._zerotier_network_ = client.network_get(network_id=self.data['zerotierId'])
+
+        return self._zerotier_network_  
+
+
+    @property
+    def _zerotier_node(self):
+        """ Return ZeroTier member object """
+        if self._zerotier_node_:
+            return self._zerotier_node_
+
+        if self.data['zerotierPraivateIP']:
+            # if zerotierPraivateIP is not set in data, node was not added to the network
+            return None
+
+        self._zerotier_node_ = self._zerotier_network.member_get(private_ip=self.data['zerotierPraivateIP'])
+
+        return self._zerotier_node_
 
     @retry((BaseException),
            tries=5, delay=3, backoff=2, logger=None)
@@ -125,16 +151,31 @@ class ZosNode(TemplateBase):
             organization=self.data['organization'],
             zerotier_client=self.data['zerotierClient'],
             sizeId=self.data['sizeId'],
-            branch=self.data['branch']
+            branch=self.data['branch'],
+            dev_mode=self.data['devMode'],
         )
-        self._machine = vm['openvcloud']
+        self._machine_ = vm['openvcloud']
+        self._zerotier_node_ = vm['zerotier']
 
         # fetch vm IP in ZeroTier network
-        self.data['zerotierPublicIP'] = 'http://{}'.format(vm['zerotier'].private_ip)
+        self.data['zerotierPrivateIP'] = self._zerotier_node.private_ip
 
         # Get data from the vm
-        self.data['ipPrivate'] = self.machine.ipaddr_priv
-        self.data['ipPublic'] = self.machine.ipaddr_public
-        self.data['machineId'] = self.machine.id
+        self.data['ipPrivate'] = self._machine.ipaddr_priv
+        self.data['ipPublic'] = self._machine.ipaddr_public
+        self.data['machineId'] = self._machine.id
 
         self.state.set('actions', 'install', 'ok')
+
+    def uninstall(self):
+        """ Delete node """
+
+        # delete machine from openvcloud
+        if self._machine:
+            self._machine.delete()
+            self._machine_ = None
+
+        # delete member of zerotier
+        if self._zerotier_node:
+            self._zerotier_network.member_delete(self._zerotier_node.address)
+            self._zerotier_node_ = None

@@ -6,7 +6,7 @@ struct Schema {
 	# Virtual Data Center id. **Required**.
 	vdc @1 :Text;
 
-    # zerotier network ID. **Required**.
+    # ZeroTier network ID. **Required**.
     zerotierId @2 :Text;
 
     # itsyou.online organization. **Required**.
@@ -39,12 +39,15 @@ struct Schema {
 	# ID of the VM. **Filled in automatically, don't specify it in the blueprint**
 	machineId @12 :Int64 = 0;
 
+	# Development mode, when set to true the node can be accessed directly
+	devMode @13 :Bool = false;
+
 	# Public ip of the VM. **Filled in automatically, don't specify it in the blueprint**
-	ipPublic @13 :Text;
+	ipPublic @14 :Text;
 
 	# Private ip of the VM. **Filled in automatically, don't specify it in the blueprint**
-	ipPrivate @14 :Text;
+	ipPrivate @15 :Text;
 
-	# ZeroTier node ID *Filled in automatically, don't specify it in the blueprint**
-	zerotierPublicIP @15 :Text;
+	# ZeroTier node private IP *Filled in automatically, don't specify it in the blueprint**
+	zerotierPraivateIP @16 :Text;
 }
